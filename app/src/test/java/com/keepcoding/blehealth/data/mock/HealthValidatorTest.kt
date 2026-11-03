@@ -20,4 +20,10 @@ class HealthValidatorTest {
         assertNull(HealthValidator.steps(-1))
         assertNull(HealthValidator.sleepMinutes(1_441))
     }
+
+    @Test
+    fun roomIgnoreResultIsRecognizedAsDuplicate() {
+        assertEquals(true, isDuplicateInsert(-1L))
+        assertEquals(false, isDuplicateInsert(1L))
+    }
 }

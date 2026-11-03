@@ -24,10 +24,10 @@ class MockDeviceRepository(
     override suspend fun scan() = operationMutex.withLock {
         _scanState.value = ScanState.Scanning
         delay(SCAN_DELAY_MS)
-        _scanState.value = if (scenarioController.scenario.value == DemoScenario.NO_DEVICES) {
-            ScanState.Empty
-        } else {
-            ScanState.Results(devices)
+        _scanState.value = when (scenarioController.scenario.value) {
+            DemoScenario.NO_DEVICES -> ScanState.Empty
+            DemoScenario.SCAN_TIMEOUT -> ScanState.Failed("扫描超时，请重新扫描")
+            else -> ScanState.Results(devices)
         }
     }
 
@@ -35,12 +35,16 @@ class MockDeviceRepository(
         if ((_connectionState.value as? ConnectionState.Connected)?.device?.id == device.id) return
         _connectionState.value = ConnectionState.Connecting(device)
         delay(CONNECT_DELAY_MS)
-        _connectionState.value = if (
-            scenarioController.scenario.value == DemoScenario.CONNECTION_FAILURE
-        ) {
-            ConnectionState.Failed(device, "无法连接设备，请重试")
-        } else {
-            ConnectionState.Connected(device)
+        _connectionState.value = when (scenarioController.scenario.value) {
+            DemoScenario.CONNECTION_FAILURE -> ConnectionState.Failed(
+                device,
+                "无法连接设备，请重试",
+            )
+            DemoScenario.CONNECTION_TIMEOUT -> ConnectionState.Failed(
+                device,
+                "连接超时，请重试",
+            )
+            else -> ConnectionState.Connected(device)
         }
     }
 

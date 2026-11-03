@@ -8,6 +8,7 @@ import com.keepcoding.blehealth.data.model.SyncResult
 import com.keepcoding.blehealth.data.model.WearableDevice
 import com.keepcoding.blehealth.data.repository.HealthRepository
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -27,6 +28,11 @@ class MockHealthRepository(
             DemoScenario.SYNC_FAILURE -> SyncResult.Failure("同步失败，设备未返回健康数据")
             DemoScenario.STORAGE_FAILURE -> SyncResult.Failure("数据已获取，但保存失败，请重试")
             DemoScenario.PARTIAL_DATA -> createAndPersist(device, isPartial = true)
+            DemoScenario.INVALID_DATA -> createAndPersist(
+                device = device,
+                isPartial = false,
+                sample = invalidSample,
+            )
             DemoScenario.DUPLICATE_DATA -> createAndPersist(
                 device = device,
                 isPartial = false,
@@ -40,8 +46,9 @@ class MockHealthRepository(
         device: WearableDevice,
         isPartial: Boolean,
         fixedId: String? = null,
+        sample: Sample? = null,
     ): SyncResult {
-        val sequence = samples[sampleIndex.getAndIncrement() % samples.size]
+        val sequence = sample ?: samples[sampleIndex.getAndIncrement() % samples.size]
         val measuredAt = System.currentTimeMillis()
         val entity = HealthRecordEntity(
             id = fixedId ?: "${device.id}-$measuredAt",
@@ -64,8 +71,18 @@ class MockHealthRepository(
         ).any { it != null }
         if (!hasAnyData) return SyncResult.Failure("所有健康指标均无效，未保存数据")
 
-        dao.insert(entity)
-        return SyncResult.Success(entity.toDomain(), isPartial)
+        return try {
+            val insertResult = dao.insert(entity)
+            SyncResult.Success(
+                record = entity.toDomain(),
+                isPartial = isPartial,
+                isDuplicate = isDuplicateInsert(insertResult),
+            )
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (_: Exception) {
+            SyncResult.Failure("数据保存失败，请重试")
+        }
     }
 
     private data class Sample(
@@ -83,5 +100,8 @@ class MockHealthRepository(
             Sample(76, 97, 7_115, 421),
             Sample(68, 99, 8_240, 462),
         )
+        val invalidSample = Sample(221, 69, -1, 1_441)
     }
 }
+
+internal fun isDuplicateInsert(insertResult: Long): Boolean = insertResult == -1L

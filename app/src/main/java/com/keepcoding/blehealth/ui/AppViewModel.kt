@@ -11,6 +11,7 @@ import com.keepcoding.blehealth.data.model.SyncState
 import com.keepcoding.blehealth.data.model.WearableDevice
 import com.keepcoding.blehealth.data.repository.DeviceRepository
 import com.keepcoding.blehealth.data.repository.HealthRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -61,12 +62,22 @@ class AppViewModel(
 
         syncJob = viewModelScope.launch {
             _syncState.value = SyncState.Syncing
-            _syncState.value = when (val result = healthRepository.sync(device)) {
-                is SyncResult.Success -> SyncState.Success(
-                    record = result.record,
-                    message = if (result.isPartial) "部分数据已保存" else "同步并保存成功",
-                )
-                is SyncResult.Failure -> SyncState.Failed(result.message)
+            try {
+                _syncState.value = when (val result = healthRepository.sync(device)) {
+                    is SyncResult.Success -> SyncState.Success(
+                        record = result.record,
+                        message = when {
+                            result.isDuplicate -> "重复记录已忽略，历史未新增"
+                            result.isPartial -> "部分数据已保存"
+                            else -> "同步并保存成功"
+                        },
+                    )
+                    is SyncResult.Failure -> SyncState.Failed(result.message)
+                }
+            } catch (exception: CancellationException) {
+                throw exception
+            } catch (_: Exception) {
+                _syncState.value = SyncState.Failed("同步失败，请重试")
             }
         }
     }

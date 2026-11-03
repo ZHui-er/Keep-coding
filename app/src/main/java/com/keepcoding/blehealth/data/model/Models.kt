@@ -45,6 +45,10 @@ sealed interface SyncState {
 }
 
 sealed interface SyncResult {
-    data class Success(val record: HealthRecord, val isPartial: Boolean) : SyncResult
+    data class Success(
+        val record: HealthRecord,
+        val isPartial: Boolean,
+        val isDuplicate: Boolean = false,
+    ) : SyncResult
     data class Failure(val message: String) : SyncResult
 }
